@@ -68,7 +68,7 @@ ulong u64_shuffle_warp(ulong v, uint thread_src)
 ulong u64_shuffle(ulong v, uint thread_src, uint thread, __local ulong *buf)
 #endif
 {
-#if USE_WARP_SHUFFLE && gpu_nvidia(DEVICE_INFO) && SM_MAJOR >= 3
+#if USE_WARP_SHUFFLE && !__OS_X__ && gpu_nvidia(DEVICE_INFO) && SM_MAJOR >= 3
 	ulong result;
 
 	asm("{\n\t"
@@ -78,7 +78,7 @@ ulong u64_shuffle(ulong v, uint thread_src, uint thread, __local ulong *buf)
 		".reg .b32 r_hi;\n\t"
 
 		"mov.b64  {v_hi,v_lo}, %1;\n\t"
-	
+
 		"shfl.sync.idx.b32  r_lo, v_lo, %2, 0x1f, 0xffffffff;\n\t"
 		"shfl.sync.idx.b32  r_hi, v_hi, %2, 0x1f, 0xffffffff;\n\t"
 
@@ -97,6 +97,8 @@ ulong u64_shuffle(ulong v, uint thread_src, uint thread, __local ulong *buf)
 	// TODO: Test on other device types to add support
 #if !gpu_nvidia(DEVICE_INFO) && !gpu_amd(DEVICE_INFO)
 	barrier(CLK_LOCAL_MEM_FENCE);
+#elif !__OS_X__ && gpu_amd(DEVICE_INFO) && DEV_VER_MAJOR < 2500
+	asm("" ::: "memory");
 #endif
 	return buf[thread_src];
 #endif
@@ -316,12 +318,12 @@ void blake2b_block(ulong m[16], ulong out_len, ulong message_size)
 
 	ulong v[16];
 	// Init work variables
-	for (int i = 0; i < 8; i++)		
+	for (int i = 0; i < 8; i++)
 		v[i] = v[i + 8] = blake2b_iv[i];
 	v[0] ^= 0x01010000 ^ out_len;
 
 	v[12] ^= message_size;// low 64 bits of offset
-	//v[13] ^= 0;		 // high 64 bits	
+	//v[13] ^= 0;		 // high 64 bits
 	v[14] = ~v[14];	   // last block flag set ?
 
 	// Rounds
@@ -415,9 +417,9 @@ __kernel void KERNEL_NAME(ARGON2_TYPE)(__global struct block_g* memory, uint pas
 	/* select job's memory region: */
 	memory += (size_t)job_id * lanes * lane_blocks;
 
+#if ARGON2_TYPE == ARGON2_I || ARGON2_TYPE == ARGON2_ID
 	uint thread_input = 0;
 
-#if ARGON2_TYPE == ARGON2_I || ARGON2_TYPE == ARGON2_ID
 	switch (thread) {
 	case 0:
 		thread_input = pass;
